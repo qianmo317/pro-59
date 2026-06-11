@@ -53,6 +53,54 @@
         <p>💡 连续接住水果可触发连击加分！</p>
       </div>
 
+      <div class="audio-settings">
+        <h3>声音设置</h3>
+        <div class="audio-row">
+          <div class="audio-toggle">
+            <span class="audio-icon">{{ audioStore.musicEnabled ? '🎵' : '🔇' }}</span>
+            <span class="audio-label">背景音乐</span>
+            <button class="toggle-btn" :class="{ active: audioStore.musicEnabled }" @click="toggleMusic">
+              {{ audioStore.musicEnabled ? '开' : '关' }}
+            </button>
+          </div>
+          <div class="volume-control">
+            <span class="volume-icon">🔊</span>
+            <input 
+              type="range" 
+              min="0" 
+              max="1" 
+              step="0.05" 
+              :value="audioStore.musicVolume" 
+              @input="onMusicVolumeChange"
+              class="volume-slider"
+            />
+            <span class="volume-value">{{ Math.round(audioStore.musicVolume * 100) }}%</span>
+          </div>
+        </div>
+        <div class="audio-row">
+          <div class="audio-toggle">
+            <span class="audio-icon">{{ audioStore.sfxEnabled ? '🔔' : '🔕' }}</span>
+            <span class="audio-label">音效</span>
+            <button class="toggle-btn" :class="{ active: audioStore.sfxEnabled }" @click="toggleSfx">
+              {{ audioStore.sfxEnabled ? '开' : '关' }}
+            </button>
+          </div>
+          <div class="volume-control">
+            <span class="volume-icon">🔊</span>
+            <input 
+              type="range" 
+              min="0" 
+              max="1" 
+              step="0.05" 
+              :value="audioStore.sfxVolume" 
+              @input="onSfxVolumeChange"
+              class="volume-slider"
+            />
+            <span class="volume-value">{{ Math.round(audioStore.sfxVolume * 100) }}%</span>
+          </div>
+        </div>
+      </div>
+
       <button class="start-btn" @click="startGame">
         开始游戏
       </button>
@@ -62,11 +110,31 @@
 
 <script setup lang="ts">
 import { useGameStore } from '../stores/game'
+import { useAudioStore } from '../stores/audio'
 
 const gameStore = useGameStore()
+const audioStore = useAudioStore()
 
 function startGame() {
   gameStore.startGame()
+}
+
+function toggleMusic() {
+  audioStore.toggleMusic()
+}
+
+function toggleSfx() {
+  audioStore.toggleSfx()
+}
+
+function onMusicVolumeChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  audioStore.setMusicVolume(parseFloat(target.value))
+}
+
+function onSfxVolumeChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  audioStore.setSfxVolume(parseFloat(target.value))
 }
 </script>
 
@@ -199,6 +267,127 @@ function startGame() {
   color: white;
   font-size: 14px;
   margin: 0;
+}
+
+.audio-settings {
+  background: #f0f4ff;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 25px;
+  text-align: left;
+}
+
+.audio-settings h3 {
+  font-size: 16px;
+  color: #333;
+  margin-bottom: 15px;
+  font-weight: 600;
+}
+
+.audio-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.audio-row:last-child {
+  margin-bottom: 0;
+}
+
+.audio-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.audio-icon {
+  font-size: 20px;
+}
+
+.audio-label {
+  font-size: 14px;
+  color: #555;
+  font-weight: 500;
+  flex: 1;
+}
+
+.toggle-btn {
+  padding: 6px 16px;
+  border: 2px solid #ccc;
+  background: white;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #999;
+  transition: all 0.2s ease;
+}
+
+.toggle-btn:hover {
+  border-color: #999;
+}
+
+.toggle-btn.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: #667eea;
+  color: white;
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 30px;
+}
+
+.volume-icon {
+  font-size: 16px;
+}
+
+.volume-slider {
+  flex: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #ddd;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
+  transition: transform 0.2s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
+}
+
+.volume-value {
+  font-size: 12px;
+  color: #666;
+  min-width: 40px;
+  text-align: right;
+  font-weight: 500;
 }
 
 .start-btn {

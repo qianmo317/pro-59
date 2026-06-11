@@ -21,10 +21,15 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useGameStore } from '../stores/game'
+import { useAudioStore } from '../stores/audio'
 import { createRandomItem, getFruitConfig, resetItemCounter } from '../utils/mockData'
 import type { FallingItem } from '../stores/game'
 
 const gameStore = useGameStore()
+const audioStore = useAudioStore()
+
+const comboMilestones = [5, 10, 15, 20]
+let lastMilestoneCombo = 0
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const wrapperRef = ref<HTMLDivElement | null>(null)
@@ -270,11 +275,23 @@ function gameLoop(timestamp: number) {
     if (checkCollision(item)) {
       if (item.type === 'bomb') {
         gameStore.loseLife()
+        audioStore.playBombExplosion()
+        lastMilestoneCombo = 0
       } else {
         const config = getFruitConfig(item.type)
         const score = gameStore.addScore(config.score)
         lastScore.value = score
         updateScorePopup(item.x, item.y)
+        audioStore.playFruitCatch()
+
+        const currentCombo = gameStore.combo
+        for (const milestone of comboMilestones) {
+          if (currentCombo >= milestone && lastMilestoneCombo < milestone) {
+            audioStore.playComboMilestone()
+            lastMilestoneCombo = milestone
+            break
+          }
+        }
       }
       return false
     }
@@ -282,6 +299,7 @@ function gameLoop(timestamp: number) {
     if (item.y > canvasHeight.value + 50) {
       if (item.type !== 'bomb') {
         gameStore.resetCombo()
+        lastMilestoneCombo = 0
       }
       return false
     }
@@ -300,8 +318,10 @@ function startGameLoop() {
   resetItemCounter()
   items.value = []
   spawnTimer = 0
+  lastMilestoneCombo = 0
   lastTime = performance.now()
   animationId = requestAnimationFrame(gameLoop)
+  audioStore.startBgm()
 }
 
 function stopGameLoop() {
@@ -309,6 +329,7 @@ function stopGameLoop() {
     cancelAnimationFrame(animationId)
     animationId = null
   }
+  audioStore.stopBgm()
 }
 
 watch(() => gameStore.isPlaying, (playing) => {
@@ -320,8 +341,18 @@ watch(() => gameStore.isPlaying, (playing) => {
 })
 
 watch(() => gameStore.isPaused, (paused) => {
-  if (!paused && gameStore.isPlaying) {
+  if (paused) {
+    audioStore.pauseBgm()
+  } else if (gameStore.isPlaying) {
     lastTime = performance.now()
+    audioStore.resumeBgm()
+  }
+})
+
+watch(() => gameStore.isGameOver, (gameOver) => {
+  if (gameOver) {
+    audioStore.stopBgm()
+    audioStore.playGameOver()
   }
 })
 
