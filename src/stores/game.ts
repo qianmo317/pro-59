@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
-export type FruitType = 'apple' | 'orange' | 'watermelon' | 'grape' | 'strawberry' | 'bomb'
+export type FruitType = 'apple' | 'orange' | 'watermelon' | 'grape' | 'strawberry' | 'bomb' | 'golden' | 'ice' | 'split'
 
 export interface FallingItem {
   id: number
@@ -12,6 +12,9 @@ export interface FallingItem {
   rotation: number
   rotationSpeed: number
   size: number
+  isMini?: boolean
+  vy?: number
+  vx?: number
 }
 
 export interface GameState {
@@ -46,6 +49,8 @@ export const useGameStore = defineStore('game', () => {
   const basketWidth = ref(100)
   const canvasWidth = ref(800)
   const canvasHeight = ref(600)
+  const isFrozen = ref(false)
+  const freezeTimer = ref(0)
 
   const comboScore = ref(0)
   const lastComboScore = ref(0)
@@ -66,6 +71,13 @@ export const useGameStore = defineStore('game', () => {
 
   const spawnRate = computed(() => {
     return Math.max(400, 1200 - level.value * 80)
+  })
+
+  const bombProbability = computed(() => {
+    const baseProb = 15
+    const maxProb = 25
+    const levelIncrease = Math.min(level.value - 1, 4) * 2.5
+    return Math.min(baseProb + levelIncrease, maxProb)
   })
 
   function startGame() {
@@ -122,6 +134,21 @@ export const useGameStore = defineStore('game', () => {
     }
   }
 
+  function triggerFreeze(duration: number = 1000) {
+    isFrozen.value = true
+    freezeTimer.value = duration
+  }
+
+  function updateFreeze(delta: number) {
+    if (isFrozen.value) {
+      freezeTimer.value -= delta
+      if (freezeTimer.value <= 0) {
+        isFrozen.value = false
+        freezeTimer.value = 0
+      }
+    }
+  }
+
   function updateLevel() {
     const newLevel = Math.floor(itemsCaught.value / 10) + 1
     if (newLevel > level.value) {
@@ -173,9 +200,12 @@ export const useGameStore = defineStore('game', () => {
     basketWidth,
     canvasWidth,
     canvasHeight,
+    isFrozen,
+    freezeTimer,
     comboMultiplier,
     baseSpeed,
     spawnRate,
+    bombProbability,
     startGame,
     addScore,
     resetCombo,
@@ -184,6 +214,8 @@ export const useGameStore = defineStore('game', () => {
     addGameTime,
     togglePause,
     setBasketX,
-    setCanvasSize
+    setCanvasSize,
+    triggerFreeze,
+    updateFreeze
   }
 })

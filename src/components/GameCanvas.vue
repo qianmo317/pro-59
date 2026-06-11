@@ -22,7 +22,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useGameStore } from '../stores/game'
 import { useAudioStore } from '../stores/audio'
-import { createRandomItem, getFruitConfig, resetItemCounter } from '../utils/mockData'
+import { createRandomItem, getFruitConfig, resetItemCounter, createMiniFruit } from '../utils/mockData'
 import { createComboAchievementRenderer } from '../utils/comboAchievementRenderer'
 import { createBasketGlowRenderer } from '../utils/basketGlowRenderer'
 import type { FallingItem } from '../stores/game'
@@ -101,7 +101,7 @@ function handleKeyDown(event: KeyboardEvent) {
 }
 
 function spawnItem() {
-  const newItem = createRandomItem(canvasWidth.value, gameStore.baseSpeed)
+  const newItem = createRandomItem(canvasWidth.value, gameStore.baseSpeed, gameStore.bombProbability)
   items.value.push(newItem)
 }
 
@@ -188,11 +188,63 @@ function drawBasket(ctx: CanvasRenderingContext2D) {
   ctx.restore()
 }
 
+let goldenPulseTime = 0
+
 function drawFallingItem(ctx: CanvasRenderingContext2D, item: FallingItem) {
   const config = getFruitConfig(item.type)
   ctx.save()
   ctx.translate(item.x, item.y)
   ctx.rotate(item.rotation)
+
+  if (item.type === 'golden') {
+    const pulseScale = 1 + Math.sin(goldenPulseTime * 0.008) * 0.15
+    const glowSize = item.size * 0.8 * pulseScale
+    
+    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, glowSize)
+    gradient.addColorStop(0, 'rgba(255, 215, 0, 0.8)')
+    gradient.addColorStop(0.5, 'rgba(255, 215, 0, 0.4)')
+    gradient.addColorStop(1, 'rgba(255, 215, 0, 0)')
+    ctx.fillStyle = gradient
+    ctx.beginPath()
+    ctx.arc(0, 0, glowSize, 0, Math.PI * 2)
+    ctx.fill()
+    
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'
+    ctx.font = `${item.size * 0.3}px Arial`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const sparkleAngle = goldenPulseTime * 0.005
+    for (let i = 0; i < 4; i++) {
+      const angle = sparkleAngle + (i * Math.PI / 2)
+      const dist = item.size * 0.5 * pulseScale
+      const sx = Math.cos(angle) * dist
+      const sy = Math.sin(angle) * dist
+      ctx.fillText('✨', sx, sy)
+    }
+  }
+
+  if (item.type === 'ice') {
+    const glowSize = item.size * 0.7
+    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, glowSize)
+    gradient.addColorStop(0, 'rgba(0, 206, 209, 0.6)')
+    gradient.addColorStop(0.6, 'rgba(0, 206, 209, 0.2)')
+    gradient.addColorStop(1, 'rgba(0, 206, 209, 0)')
+    ctx.fillStyle = gradient
+    ctx.beginPath()
+    ctx.arc(0, 0, glowSize, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  if (item.type === 'split') {
+    const glowSize = item.size * 0.6
+    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, glowSize)
+    gradient.addColorStop(0, 'rgba(255, 105, 180, 0.5)')
+    gradient.addColorStop(1, 'rgba(255, 105, 180, 0)')
+    ctx.fillStyle = gradient
+    ctx.beginPath()
+    ctx.arc(0, 0, glowSize, 0, Math.PI * 2)
+    ctx.fill()
+  }
 
   const fontSize = item.size
   ctx.font = `${fontSize}px Arial`
@@ -306,6 +358,51 @@ function drawComboBreak(ctx: CanvasRenderingContext2D) {
   ctx.restore()
 }
 
+const gravity = 0.15
+
+function handleItemCatch(item: FallingItem) {
+  if (item.type === 'bomb') {
+    gameStore.loseLife()
+    audioStore.playBombExplosion()
+    showComboBreak()
+    lastMilestoneCombo = 0
+    return
+  }
+
+  const config = getFruitConfig(item.type)
+  const score = gameStore.addScore(config.score)
+  lastScore.value = score
+  updateScorePopup(item.x, item.y)
+  audioStore.playFruitCatch()
+
+  const currentCombo = gameStore.combo
+  for (const milestone of comboMilestones) {
+    if (currentCombo >= milestone && lastMilestoneCombo < milestone) {
+      audioStore.playComboMilestone()
+      lastMilestoneCombo = milestone
+      comboAchievementRenderer.trigger(milestone, performance.now())
+      break
+    }
+  }
+
+  if (config.effect === 'freeze') {
+    gameStore.triggerFreeze(1000)
+  }
+
+  if (config.effect === 'split') {
+    const basketPosX = gameStore.basketX
+    const basketPosY = basketY.value
+    for (let i = 0; i < 3; i++) {
+      const angle = -Math.PI / 2 + (i - 1) * 0.4
+      const speed = 5 + Math.random() * 2
+      const vx = Math.cos(angle) * speed
+      const vy = Math.sin(angle) * speed
+      const miniFruit = createMiniFruit(basketPosX, basketPosY - 10, vx, vy)
+      items.value.push(miniFruit)
+    }
+  }
+}
+
 function gameLoop(timestamp: number) {
   if (!canvasRef.value || !gameStore.isPlaying) return
 
@@ -324,41 +421,33 @@ function gameLoop(timestamp: number) {
   const deltaTime = timestamp - lastTime
   lastTime = timestamp
 
-  gameStore.addGameTime(deltaTime)
+  goldenPulseTime += deltaTime
 
-  spawnTimer += deltaTime
-  if (spawnTimer >= gameStore.spawnRate) {
-    spawnItem()
-    spawnTimer = 0
+  gameStore.addGameTime(deltaTime)
+  gameStore.updateFreeze(deltaTime)
+
+  if (!gameStore.isFrozen) {
+    spawnTimer += deltaTime
+    if (spawnTimer >= gameStore.spawnRate) {
+      spawnItem()
+      spawnTimer = 0
+    }
   }
 
   items.value = items.value.filter(item => {
-    item.y += item.speed
-    item.rotation += item.rotationSpeed
+    if (!gameStore.isFrozen) {
+      if (item.isMini && item.vy !== undefined && item.vx !== undefined) {
+        item.vy += gravity
+        item.x += item.vx
+        item.y += item.vy
+      } else {
+        item.y += item.speed
+      }
+      item.rotation += item.rotationSpeed
+    }
 
     if (checkCollision(item)) {
-      if (item.type === 'bomb') {
-        gameStore.loseLife()
-        audioStore.playBombExplosion()
-        showComboBreak()
-        lastMilestoneCombo = 0
-      } else {
-        const config = getFruitConfig(item.type)
-        const score = gameStore.addScore(config.score)
-        lastScore.value = score
-        updateScorePopup(item.x, item.y)
-        audioStore.playFruitCatch()
-
-        const currentCombo = gameStore.combo
-        for (const milestone of comboMilestones) {
-          if (currentCombo >= milestone && lastMilestoneCombo < milestone) {
-            audioStore.playComboMilestone()
-            lastMilestoneCombo = milestone
-            comboAchievementRenderer.trigger(milestone, performance.now())
-            break
-          }
-        }
-      }
+      handleItemCatch(item)
       return false
     }
 
@@ -371,10 +460,34 @@ function gameLoop(timestamp: number) {
       return false
     }
 
+    if (item.isMini && item.y < -50) {
+      return false
+    }
+
     return true
   })
 
   drawBackground(ctx)
+  
+  if (gameStore.isFrozen) {
+    ctx.fillStyle = 'rgba(173, 216, 230, 0.3)'
+    ctx.fillRect(0, 0, canvasWidth.value, canvasHeight.value)
+    
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
+    ctx.lineWidth = 2
+    const icePatternSize = 30
+    for (let x = 0; x < canvasWidth.value; x += icePatternSize * 2) {
+      for (let y = 0; y < canvasHeight.value; y += icePatternSize * 2) {
+        ctx.beginPath()
+        ctx.moveTo(x, y - 5)
+        ctx.lineTo(x, y + 5)
+        ctx.moveTo(x - 5, y)
+        ctx.lineTo(x + 5, y)
+        ctx.stroke()
+      }
+    }
+  }
+  
   items.value.forEach(item => drawFallingItem(ctx, item))
 
   basketGlowRenderer.update(deltaTime)
@@ -396,6 +509,7 @@ function startGameLoop() {
   spawnTimer = 0
   lastMilestoneCombo = 0
   lastTime = performance.now()
+  goldenPulseTime = 0
   comboAchievementRenderer.clear()
   basketGlowRenderer.reset()
   comboBreakVisible.value = false
