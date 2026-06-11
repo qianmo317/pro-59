@@ -47,6 +47,10 @@ export const useGameStore = defineStore('game', () => {
   const canvasWidth = ref(800)
   const canvasHeight = ref(600)
 
+  const comboScore = ref(0)
+  const lastComboScore = ref(0)
+  const lastComboCount = ref(0)
+
   const comboMultiplier = computed(() => {
     if (combo.value >= 20) return 4
     if (combo.value >= 15) return 3
@@ -68,6 +72,9 @@ export const useGameStore = defineStore('game', () => {
     score.value = 0
     lives.value = 3
     combo.value = 0
+    comboScore.value = 0
+    lastComboScore.value = 0
+    lastComboCount.value = 0
     maxCombo.value = 0
     itemsCaught.value = 0
     bombsHit.value = 0
@@ -85,19 +92,30 @@ export const useGameStore = defineStore('game', () => {
     }
     const finalScore = Math.round(baseScore * comboMultiplier.value)
     score.value += finalScore
+    comboScore.value += finalScore
     itemsCaught.value++
     updateLevel()
     return finalScore
   }
 
   function resetCombo() {
+    if (combo.value >= 3) {
+      lastComboScore.value = comboScore.value
+      lastComboCount.value = combo.value
+    }
     combo.value = 0
+    comboScore.value = 0
   }
 
   function loseLife() {
     lives.value--
     bombsHit.value++
+    if (combo.value >= 3) {
+      lastComboScore.value = comboScore.value
+      lastComboCount.value = combo.value
+    }
     combo.value = 0
+    comboScore.value = 0
     if (lives.value <= 0) {
       isGameOver.value = true
       isPlaying.value = false
@@ -140,6 +158,9 @@ export const useGameStore = defineStore('game', () => {
     lives,
     maxLives,
     combo,
+    comboScore,
+    lastComboScore,
+    lastComboCount,
     maxCombo,
     itemsCaught,
     bombsHit,

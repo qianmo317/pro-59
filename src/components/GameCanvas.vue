@@ -23,10 +23,15 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useGameStore } from '../stores/game'
 import { useAudioStore } from '../stores/audio'
 import { createRandomItem, getFruitConfig, resetItemCounter } from '../utils/mockData'
+import { createComboAchievementRenderer } from '../utils/comboAchievementRenderer'
+import { createBasketGlowRenderer } from '../utils/basketGlowRenderer'
 import type { FallingItem } from '../stores/game'
 
 const gameStore = useGameStore()
 const audioStore = useAudioStore()
+
+const comboAchievementRenderer = createComboAchievementRenderer()
+const basketGlowRenderer = createBasketGlowRenderer()
 
 const comboMilestones = [5, 10, 15, 20]
 let lastMilestoneCombo = 0
@@ -40,6 +45,11 @@ const showCombo = ref(false)
 const lastScore = ref(0)
 const scorePopupStyle = ref({ left: '0px', top: '0px' })
 const scorePopupTimeout = ref<number | null>(null)
+
+const comboBreakVisible = ref(false)
+const comboBreakCombo = ref(0)
+const comboBreakScore = ref(0)
+let comboBreakTimeout: number | null = null
 
 let animationId: number | null = null
 let lastTime = 0
@@ -242,6 +252,60 @@ function drawPausedOverlay(ctx: CanvasRenderingContext2D) {
   ctx.fillText('按空格键或点击继续', canvasWidth.value / 2, canvasHeight.value / 2 + 30)
 }
 
+function showComboBreak() {
+  const combo = gameStore.lastComboCount
+  const score = gameStore.lastComboScore
+  if (combo < 3) return
+
+  comboBreakCombo.value = combo
+  comboBreakScore.value = score
+  comboBreakVisible.value = true
+
+  if (comboBreakTimeout) {
+    clearTimeout(comboBreakTimeout)
+  }
+  comboBreakTimeout = window.setTimeout(() => {
+    comboBreakVisible.value = false
+  }, 2000)
+}
+
+function drawComboBreak(ctx: CanvasRenderingContext2D) {
+  ctx.save()
+
+  const cx = canvasWidth.value / 2
+  const cy = canvasHeight.value / 2 - 40
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
+  const bgW = 280
+  const bgH = 90
+  const bgR = 16
+  ctx.beginPath()
+  ctx.moveTo(cx - bgW / 2 + bgR, cy - bgH / 2)
+  ctx.lineTo(cx + bgW / 2 - bgR, cy - bgH / 2)
+  ctx.quadraticCurveTo(cx + bgW / 2, cy - bgH / 2, cx + bgW / 2, cy - bgH / 2 + bgR)
+  ctx.lineTo(cx + bgW / 2, cy + bgH / 2 - bgR)
+  ctx.quadraticCurveTo(cx + bgW / 2, cy + bgH / 2, cx + bgW / 2 - bgR, cy + bgH / 2)
+  ctx.lineTo(cx - bgW / 2 + bgR, cy + bgH / 2)
+  ctx.quadraticCurveTo(cx - bgW / 2, cy + bgH / 2, cx - bgW / 2, cy + bgH / 2 - bgR)
+  ctx.lineTo(cx - bgW / 2, cy - bgH / 2 + bgR)
+  ctx.quadraticCurveTo(cx - bgW / 2, cy - bgH / 2, cx - bgW / 2 + bgR, cy - bgH / 2)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+
+  ctx.font = 'bold 28px Arial, sans-serif'
+  ctx.fillStyle = '#999'
+  ctx.fillText('连击终结', cx, cy - 14)
+
+  ctx.font = '20px Arial, sans-serif'
+  ctx.fillStyle = '#BBB'
+  ctx.fillText(`${comboBreakCombo.value}连击 · 得分 ${comboBreakScore.value}`, cx, cy + 20)
+
+  ctx.restore()
+}
+
 function gameLoop(timestamp: number) {
   if (!canvasRef.value || !gameStore.isPlaying) return
 
@@ -276,6 +340,7 @@ function gameLoop(timestamp: number) {
       if (item.type === 'bomb') {
         gameStore.loseLife()
         audioStore.playBombExplosion()
+        showComboBreak()
         lastMilestoneCombo = 0
       } else {
         const config = getFruitConfig(item.type)
@@ -289,6 +354,7 @@ function gameLoop(timestamp: number) {
           if (currentCombo >= milestone && lastMilestoneCombo < milestone) {
             audioStore.playComboMilestone()
             lastMilestoneCombo = milestone
+            comboAchievementRenderer.trigger(milestone, performance.now())
             break
           }
         }
@@ -299,6 +365,7 @@ function gameLoop(timestamp: number) {
     if (item.y > canvasHeight.value + 50) {
       if (item.type !== 'bomb') {
         gameStore.resetCombo()
+        showComboBreak()
         lastMilestoneCombo = 0
       }
       return false
@@ -309,7 +376,16 @@ function gameLoop(timestamp: number) {
 
   drawBackground(ctx)
   items.value.forEach(item => drawFallingItem(ctx, item))
+
+  basketGlowRenderer.update(deltaTime)
+  basketGlowRenderer.render(ctx, gameStore.basketX, basketY.value, gameStore.basketWidth, basketHeight, gameStore.combo)
   drawBasket(ctx)
+
+  comboAchievementRenderer.render(ctx, canvasWidth.value, performance.now())
+
+  if (comboBreakVisible.value) {
+    drawComboBreak(ctx)
+  }
 
   animationId = requestAnimationFrame(gameLoop)
 }
@@ -320,6 +396,9 @@ function startGameLoop() {
   spawnTimer = 0
   lastMilestoneCombo = 0
   lastTime = performance.now()
+  comboAchievementRenderer.clear()
+  basketGlowRenderer.reset()
+  comboBreakVisible.value = false
   animationId = requestAnimationFrame(gameLoop)
   audioStore.startBgm()
 }
